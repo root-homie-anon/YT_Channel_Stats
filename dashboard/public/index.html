@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YT Channel Stats</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; }
+    .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 1.6rem; margin-bottom: 24px; color: #fff; }
+    h2 { font-size: 1.1rem; margin-bottom: 12px; color: #aaa; }
+    h3 { font-size: 0.95rem; margin-bottom: 8px; color: #ccc; }
+
+    /* Status bar */
+    .status-bar { display: flex; gap: 16px; margin-bottom: 24px; padding: 12px 16px; background: #1a1a1a; border-radius: 8px; font-size: 0.85rem; }
+    .status-bar .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+    .dot.green { background: #4caf50; }
+    .dot.red { background: #f44336; }
+
+    /* New session form */
+    .new-session { background: #1a1a1a; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .new-session input { background: #2a2a2a; border: 1px solid #333; color: #e0e0e0; padding: 10px 14px; border-radius: 6px; font-size: 0.9rem; width: 100%; margin-bottom: 10px; }
+    .new-session input::placeholder { color: #666; }
+    .new-session .row { display: flex; gap: 10px; }
+    .new-session .row input { flex: 1; }
+    .btn { background: #ff0000; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+    .btn:hover { background: #cc0000; }
+    .btn:disabled { background: #555; cursor: not-allowed; }
+    .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+    .btn-outline { background: transparent; border: 1px solid #555; color: #ccc; }
+    .btn-outline:hover { border-color: #888; color: #fff; background: #222; }
+    .btn-outline.active { border-color: #ff0000; color: #ff4444; }
+    .btn-danger { background: #c62828; }
+    .btn-danger:hover { background: #a01010; }
+
+    /* Session list */
+    .sessions { display: flex; flex-direction: column; gap: 8px; }
+    .session-card { display: flex; align-items: center; gap: 16px; background: #1a1a1a; border-radius: 8px; padding: 16px 20px; cursor: pointer; transition: background 0.15s; }
+    .session-card:hover { background: #252525; }
+    .session-card.selected { outline: 2px solid #ff0000; }
+    .session-card .niche { flex: 1; font-weight: 600; }
+    .session-card .meta { font-size: 0.8rem; color: #888; }
+    .session-card .compare-check { width: 18px; height: 18px; border: 2px solid #555; border-radius: 4px; cursor: pointer; flex-shrink: 0; display: none; }
+    .session-card .compare-check.visible { display: block; }
+    .session-card .compare-check.checked { background: #ff0000; border-color: #ff0000; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+    .badge.profitable { background: #1b5e20; color: #81c784; }
+    .badge.not_profitable { background: #4a1414; color: #ef9a9a; }
+    .badge.needs_more_data { background: #4a3a00; color: #fff176; }
+    .badge.running { background: #0d47a1; color: #90caf9; }
+    .badge.pending { background: #333; color: #999; }
+    .badge.failed { background: #4a1414; color: #ef9a9a; }
+    .badge.complete { background: #1a1a1a; color: #888; }
+
+    /* Tabs */
+    .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; }
+    .tab { padding: 8px 16px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 0.85rem; background: #1a1a1a; color: #888; border: 1px solid transparent; border-bottom: none; }
+    .tab.active { background: #252525; color: #fff; border-color: #333; }
+
+    /* Detail view */
+    .detail { display: none; background: #1a1a1a; border-radius: 8px; padding: 24px; margin-bottom: 24px; }
+    .detail.active { display: block; }
+    .detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .detail-header h2 { margin: 0; color: #fff; font-size: 1.2rem; }
+    .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .report-content { white-space: pre-wrap; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.6; background: #111; padding: 20px; border-radius: 6px; max-height: 600px; overflow-y: auto; }
+
+    /* Topics table */
+    .topics-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .topics-table th { text-align: left; padding: 8px 12px; border-bottom: 2px solid #333; color: #aaa; font-weight: 600; }
+    .topics-table td { padding: 8px 12px; border-bottom: 1px solid #222; }
+    .topics-table tr:hover { background: #1f1f1f; }
+    .score-bar { display: inline-block; height: 6px; border-radius: 3px; background: #ff0000; }
+    .source-tag { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; background: #2a2a2a; color: #aaa; }
+
+    /* Comparison view */
+    .compare-panel { display: none; background: #1a1a1a; border-radius: 8px; padding: 24px; margin-bottom: 24px; }
+    .compare-panel.active { display: block; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .compare-card { background: #111; border-radius: 6px; padding: 16px; }
+    .compare-card h3 { margin-bottom: 8px; }
+    .change-indicator { font-weight: 600; }
+    .change-indicator.up { color: #4caf50; }
+    .change-indicator.down { color: #f44336; }
+    .change-indicator.neutral { color: #888; }
+
+    /* Loading */
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #555; border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Tags */
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; background: #2a2a2a; color: #aaa; margin-right: 4px; }
+    .tag-input { background: #2a2a2a; border: 1px solid #333; color: #e0e0e0; padding: 6px 10px; border-radius: 4px; font-size: 0.8rem; width: 250px; }
+    .tags-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+
+    /* Monitor section */
+    .monitor-section { background: #1a1a1a; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .monitor-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+    .monitor-item { display: flex; align-items: center; gap: 12px; background: #111; border-radius: 6px; padding: 10px 14px; font-size: 0.85rem; }
+    .monitor-item .niche { flex: 1; font-weight: 600; }
+    .monitor-item .meta { color: #888; font-size: 0.8rem; }
+
+    .empty { text-align: center; padding: 40px; color: #666; }
+
+    /* Search and filter controls */
+    .session-controls { background: #1a1a1a; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .session-controls .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .search-input { background: #2a2a2a; border: 1px solid #333; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; flex: 1; min-width: 180px; }
+    .search-input::placeholder { color: #666; }
+    .search-input:focus { outline: none; border-color: #555; }
+    .sort-select { background: #2a2a2a; border: 1px solid #333; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+    .sort-select:focus { outline: none; border-color: #555; }
+    .filter-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+    .filter-pill { padding: 5px 12px; border-radius: 16px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: 1px solid #444; background: transparent; color: #aaa; transition: all 0.15s; }
+    .filter-pill:hover { border-color: #777; color: #ddd; }
+    .filter-pill.active { border-color: #ff0000; color: #ff4444; background: rgba(255, 0, 0, 0.1); }
+    .session-count { font-size: 0.8rem; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>YT Channel Stats</h1>
+
+    <div class="status-bar">
+      <span><span class="dot" id="healthDot"></span> Server: <span id="healthStatus">checking...</span></span>
+      <span>API Key: <span id="apiKeyStatus">...</span></span>
+    </div>
+
+    <div class="new-session">
+      <h2>New Research Session</h2>
+      <input type="text" id="nicheInput" placeholder="Niche (e.g. personal finance)">
+      <div class="row">
+        <input type="text" id="keywordsInput" placeholder="Keywords, comma-separated (e.g. money tips, budgeting youtube)">
+        <button class="btn" id="startBtn" onclick="startSession()">Research</button>
+      </div>
+    </div>
+
+    <!-- Comparison panel -->
+    <div class="compare-panel" id="comparePanel">
+      <div class="detail-header">
+        <h2>Session Comparison</h2>
+        <div class="detail-actions">
+          <button class="btn btn-sm btn-outline" onclick="exitCompareMode()">Close</button>
+        </div>
+      </div>
+      <div id="compareContent"></div>
+    </div>
+
+    <!-- Detail view -->
+    <div class="detail" id="detail">
+      <div class="detail-header">
+        <h2 id="detailTitle"></h2>
+        <div class="detail-actions">
+          <button class="btn btn-sm btn-outline" onclick="downloadPdf()">PDF</button>
+          <button class="btn btn-sm btn-outline" onclick="downloadMd()">Markdown</button>
+          <button class="btn btn-sm btn-outline" onclick="rerunSession()">Re-run</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteSession()">Delete</button>
+          <button class="btn btn-sm btn-outline" onclick="closeDetail()">Close</button>
+        </div>
+      </div>
+      <div class="tags-row" id="tagsRow">
+        <span style="color: #888; font-size: 0.8rem;">Tags:</span>
+        <span id="tagsList"></span>
+        <input type="text" class="tag-input" id="tagInput" placeholder="Add tag, press Enter" style="width: 160px;">
+      </div>
+      <div class="tab-bar">
+        <div class="tab active" onclick="switchTab('report')">Report</div>
+        <div class="tab" onclick="switchTab('topics')">Topics</div>
+        <div class="tab" onclick="switchTab('raw')">Raw Data</div>
+      </div>
+      <div class="tab-content active" id="tab-report">
+        <div class="report-content" id="reportContent"></div>
+      </div>
+      <div class="tab-content" id="tab-topics">
+        <div id="topicsContent"></div>
+      </div>
+      <div class="tab-content" id="tab-raw">
+        <div class="report-content" id="rawContent"></div>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h2 style="margin: 0;">Research Sessions</h2>
+      <button class="btn btn-sm btn-outline" id="compareModeBtn" onclick="toggleCompareMode()">Compare</button>
+    </div>
+
+    <div class="session-controls">
+      <div class="row">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by niche name...">
+        <select class="sort-select" id="sortSelect">
+          <option value="date-desc">Date (newest first)</option>
+          <option value="date-asc">Date (oldest first)</option>
+          <option value="verdict">Verdict (profitable first)</option>
+          <option value="confidence">Confidence (highest first)</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="filter-pills" id="filterPills">
+          <button class="filter-pill active" data-filter="all" onclick="setVerdictFilter('all')">All</button>
+          <button class="filter-pill" data-filter="profitable" onclick="setVerdictFilter('profitable')">Profitable</button>
+          <button class="filter-pill" data-filter="not_profitable" onclick="setVerdictFilter('not_profitable')">Not Profitable</button>
+          <button class="filter-pill" data-filter="needs_more_data" onclick="setVerdictFilter('needs_more_data')">Needs Data</button>
+        </div>
+        <span class="session-count" id="sessionCount"></span>
+      </div>
+    </div>
+
+    <div class="sessions" id="sessionList">
+      <div class="empty">Loading...</div>
+    </div>
+
+    <!-- Trend Monitors -->
+    <div class="monitor-section" style="margin-top: 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0;">Trend Monitors</h2>
+        <button class="btn btn-sm btn-outline" onclick="runStaleMonitors()">Run Stale</button>
+      </div>
+      <div style="display: flex; gap: 8px; margin-top: 12px;">
+        <input type="text" id="monitorNiche" placeholder="Niche" class="tag-input" style="flex: 1;">
+        <input type="text" id="monitorKeywords" placeholder="Keywords (comma-sep)" class="tag-input" style="flex: 1;">
+        <input type="number" id="monitorInterval" placeholder="Days" class="tag-input" style="width: 70px;" value="7" min="1">
+        <button class="btn btn-sm" onclick="addMonitor()">Add</button>
+      </div>
+      <div class="monitor-list" id="monitorList"></div>
+    </div>
+  </div>
+
+  <script>
+    let currentSessionId = null;
+    let currentSessionTags = [];
+    let detailRefreshTimer = null;
+    let compareMode = false;
+    let compareSelection = [];
+    let sessionsData = [];
+    let searchQuery = '';
+    let sortOrder = 'date-desc';
+    let verdictFilter = 'all';
+
+    function getAuth() {
+      let creds = localStorage.getItem('yt_stats_creds');
+      if (!creds) {
+        const user = prompt('Username:');
+        const pass = prompt('Password:');
+        if (!user || !pass) return '';
+        creds = btoa(user + ':' + pass);
+        localStorage.setItem('yt_stats_creds', creds);
+      }
+      return 'Basic ' + creds;
+    }
+
+    async function api(path, opts = {}) {
+      const auth = getAuth();
+      if (!auth) throw new Error('No credentials');
+      const res = await fetch('/api' + path, {
+        ...opts,
+        headers: { 'Authorization': auth, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+      });
+      if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem('yt_stats_creds');
+        location.reload();
+        throw new Error('Auth failed');
+      }
+      return res;
+    }
+
+    async function checkHealth() {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        document.getElementById('healthDot').className = 'dot green';
+        document.getElementById('healthStatus').textContent = 'online';
+        document.getElementById('apiKeyStatus').textContent = data.apiKeySet ? 'configured' : 'not set';
+        document.getElementById('apiKeyStatus').style.color = data.apiKeySet ? '#4caf50' : '#f44336';
+      } catch {
+        document.getElementById('healthDot').className = 'dot red';
+        document.getElementById('healthStatus').textContent = 'offline';
+      }
+    }
+
+    async function loadSessions() {
+      try {
+        const res = await api('/sessions');
+        sessionsData = await res.json();
+        renderSessions();
+      } catch (err) {
+        console.error('Failed to load sessions:', err);
+      }
+    }
+
+    function getFilteredSessions() {
+      let filtered = sessionsData.slice();
+
+      // Search filter
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(s => s.niche.toLowerCase().includes(q));
+      }
+
+      // Verdict filter
+      if (verdictFilter !== 'all') {
+        filtered = filtered.filter(s => s.recommendation === verdictFilter);
+      }
+
+      // Sort
+      const verdictPriority = { profitable: 0, needs_more_data: 1, not_profitable: 2 };
+      filtered.sort((a, b) => {
+        switch (sortOrder) {
+          case 'date-asc':
+            return new Date(a.createdAt) - new Date(b.createdAt);
+          case 'verdict':
+            return (verdictPriority[a.recommendation] ?? 3) - (verdictPriority[b.recommendation] ?? 3);
+          case 'confidence':
+            return (b.confidence ?? 0) - (a.confidence ?? 0);
+          case 'date-desc':
+          default:
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        }
+      });
+
+      return filtered;
+    }
+
+    function renderSessions() {
+      const list = document.getElementById('sessionList');
+      const countEl = document.getElementById('sessionCount');
+
+      if (sessionsData.length === 0) {
+        list.innerHTML = '<div class="empty">No sessions yet. Start a new research session above.</div>';
+        countEl.textContent = '';
+        return;
+      }
+
+      const filtered = getFilteredSessions();
+      countEl.textContent = `Showing ${filtered.length} of ${sessionsData.length} sessions`;
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="empty">No sessions match the current filters.</div>';
+        return;
+      }
+
+      list.innerHTML = filtered.map(s => {
+        const isSelected = compareSelection.includes(s.id);
+        return `
+          <div class="session-card ${isSelected ? 'selected' : ''}" onclick="${compareMode ? `toggleCompareSelect('${s.id}')` : `openSession('${s.id}')`}">
+            <div class="compare-check ${compareMode ? 'visible' : ''} ${isSelected ? 'checked' : ''}" data-id="${s.id}"></div>
+            <span class="niche">${esc(s.niche)}</span>
+            <span class="badge ${s.status}">${s.status}</span>
+            ${s.recommendation ? `<span class="badge ${s.recommendation}">${s.recommendation.replace('_', ' ')}</span>` : ''}
+            ${(s.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
+            <span class="meta">${new Date(s.createdAt).toLocaleDateString()}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function setVerdictFilter(filter) {
+      verdictFilter = filter;
+      document.querySelectorAll('.filter-pill').forEach(p => {
+        p.classList.toggle('active', p.dataset.filter === filter);
+      });
+      renderSessions();
+    }
+
+    async function startSession() {
+      const niche = document.getElementById('nicheInput').value.trim();
+      const kw = document.getElementById('keywordsInput').value.trim();
+      if (!niche) return alert('Enter a niche');
+
+      const keywords = kw ? kw.split(',').map(k => k.trim()).filter(Boolean) : [niche];
+      const btn = document.getElementById('startBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>';
+
+      try {
+        await api('/sessions', {
+          method: 'POST',
+          body: JSON.stringify({ niche, keywords })
+        });
+        document.getElementById('nicheInput').value = '';
+        document.getElementById('keywordsInput').value = '';
+        setTimeout(loadSessions, 1000);
+      } catch (err) {
+        alert('Failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Research';
+      }
+    }
+
+    async function openSession(id) {
+      currentSessionId = id;
+      try {
+        // Load report and session data in parallel
+        const [reportRes, sessionRes, topicsRes] = await Promise.all([
+          api('/sessions/' + id + '/report'),
+          api('/sessions/' + id),
+          api('/sessions/' + id + '/topics'),
+        ]);
+
+        const report = await reportRes.text();
+        const session = await sessionRes.json();
+        const topics = await topicsRes.json();
+
+        document.getElementById('detailTitle').textContent = session.niche;
+        document.getElementById('reportContent').textContent = report;
+        document.getElementById('rawContent').textContent = JSON.stringify(session, null, 2);
+        currentSessionTags = session.tags || [];
+        renderTags();
+        renderTopics(topics);
+
+        // Reset tabs
+        switchTab('report');
+        document.getElementById('detail').classList.add('active');
+
+        // Auto-refresh if session is running
+        clearInterval(detailRefreshTimer);
+        if (session.status === 'running' || session.status === 'pending') {
+          detailRefreshTimer = setInterval(() => refreshDetail(), 3000);
+        }
+      } catch (err) {
+        alert('Failed to load session');
+      }
+    }
+
+    async function refreshDetail() {
+      if (!currentSessionId) return;
+      try {
+        const res = await api('/sessions/' + currentSessionId);
+        const session = await res.json();
+        document.getElementById('rawContent').textContent = JSON.stringify(session, null, 2);
+        if (session.status === 'complete' || session.status === 'failed') {
+          clearInterval(detailRefreshTimer);
+          openSession(currentSessionId); // full reload
+          loadSessions();
+        }
+      } catch {}
+    }
+
+    function renderTopics(topics) {
+      const container = document.getElementById('topicsContent');
+      if (!topics || topics.length === 0) {
+        container.innerHTML = '<div class="empty">No topic suggestions yet. Run a session with real data to see topic opportunities.</div>';
+        return;
+      }
+
+      container.innerHTML = `
+        <table class="topics-table">
+          <thead>
+            <tr><th>Topic</th><th>Score</th><th>Source</th><th>Evidence</th></tr>
+          </thead>
+          <tbody>
+            ${topics.map(t => `
+              <tr>
+                <td><strong>${esc(t.topic)}</strong></td>
+                <td><span class="score-bar" style="width: ${t.score}px"></span> ${t.score}</td>
+                <td><span class="source-tag">${t.source}</span></td>
+                <td style="font-size: 0.8rem; color: #999;">${esc(t.evidence)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.tab[onclick="switchTab('${tab}')"]`).classList.add('active');
+      document.getElementById('tab-' + tab).classList.add('active');
+    }
+
+    function closeDetail() {
+      document.getElementById('detail').classList.remove('active');
+      currentSessionId = null;
+      clearInterval(detailRefreshTimer);
+    }
+
+    function renderTags() {
+      document.getElementById('tagsList').innerHTML = currentSessionTags.map(t =>
+        `<span class="tag">${esc(t)} <span style="cursor:pointer;margin-left:4px;" onclick="removeTag('${esc(t)}')">&times;</span></span>`
+      ).join('');
+    }
+
+    async function removeTag(tag) {
+      currentSessionTags = currentSessionTags.filter(t => t !== tag);
+      await saveTags();
+    }
+
+    async function saveTags() {
+      if (!currentSessionId) return;
+      await api('/sessions/' + currentSessionId + '/tags', {
+        method: 'PUT',
+        body: JSON.stringify({ tags: currentSessionTags })
+      });
+      renderTags();
+      loadSessions();
+    }
+
+    async function downloadPdf() {
+      if (!currentSessionId) return;
+      try {
+        const res = await api('/sessions/' + currentSessionId + '/report/pdf');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'niche-report.pdf';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch {
+        alert('PDF download failed');
+      }
+    }
+
+    async function downloadMd() {
+      if (!currentSessionId) return;
+      try {
+        const res = await api('/sessions/' + currentSessionId + '/report');
+        const text = await res.text();
+        const blob = new Blob([text], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'niche-report.md';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch {
+        alert('Markdown download failed');
+      }
+    }
+
+    async function rerunSession() {
+      if (!currentSessionId) return;
+      try {
+        await api('/sessions/' + currentSessionId + '/rerun', { method: 'POST' });
+        closeDetail();
+        setTimeout(loadSessions, 1000);
+      } catch {
+        alert('Re-run failed');
+      }
+    }
+
+    async function deleteSession() {
+      if (!currentSessionId) return;
+      if (!confirm('Delete this session?')) return;
+      try {
+        await api('/sessions/' + currentSessionId, { method: 'DELETE' });
+        closeDetail();
+        loadSessions();
+      } catch {
+        alert('Delete failed');
+      }
+    }
+
+    // === Compare Mode ===
+    function toggleCompareMode() {
+      compareMode = !compareMode;
+      compareSelection = [];
+      const btn = document.getElementById('compareModeBtn');
+      btn.classList.toggle('active', compareMode);
+      btn.textContent = compareMode ? 'Cancel Compare' : 'Compare';
+      document.getElementById('comparePanel').classList.remove('active');
+      renderSessions();
+    }
+
+    function exitCompareMode() {
+      compareMode = false;
+      compareSelection = [];
+      document.getElementById('compareModeBtn').classList.remove('active');
+      document.getElementById('compareModeBtn').textContent = 'Compare';
+      document.getElementById('comparePanel').classList.remove('active');
+      renderSessions();
+    }
+
+    async function toggleCompareSelect(id) {
+      const idx = compareSelection.indexOf(id);
+      if (idx >= 0) {
+        compareSelection.splice(idx, 1);
+      } else {
+        if (compareSelection.length >= 2) compareSelection.shift();
+        compareSelection.push(id);
+      }
+      renderSessions();
+
+      if (compareSelection.length === 2) {
+        await runComparison(compareSelection[0], compareSelection[1]);
+      } else {
+        document.getElementById('comparePanel').classList.remove('active');
+      }
+    }
+
+    async function runComparison(idA, idB) {
+      try {
+        const res = await api(`/sessions/compare?a=${idA}&b=${idB}`);
+        const data = await res.json();
+        renderComparison(data);
+        document.getElementById('comparePanel').classList.add('active');
+      } catch {
+        alert('Comparison failed');
+      }
+    }
+
+    function renderComparison(c) {
+      const changeClass = (val) => val > 0 ? 'up' : val < 0 ? 'down' : 'neutral';
+      const changeSign = (val) => val > 0 ? '+' : '';
+      const pct = (val) => `${changeSign(val)}${Math.round(val)}%`;
+
+      document.getElementById('compareContent').innerHTML = `
+        <div class="compare-grid">
+          <div class="compare-card">
+            <h3>${esc(c.nicheA)}</h3>
+            <p style="font-size: 0.8rem; color: #888;">Session A (older)</p>
+          </div>
+          <div class="compare-card">
+            <h3>${esc(c.nicheB)}</h3>
+            <p style="font-size: 0.8rem; color: #888;">Session B (newer)</p>
+          </div>
+        </div>
+        <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+          <div class="compare-card">
+            <div style="color: #888; font-size: 0.8rem;">Saturation</div>
+            <div>${c.saturationChange.from} → ${c.saturationChange.to}</div>
+            <div class="change-indicator ${changeClass(c.saturationChange.scoreChange)}">${changeSign(c.saturationChange.scoreChange)}${c.saturationChange.scoreChange} pts</div>
+          </div>
+          <div class="compare-card">
+            <div style="color: #888; font-size: 0.8rem;">Trend</div>
+            <div>${c.trendChange.from} → ${c.trendChange.to}</div>
+          </div>
+          <div class="compare-card">
+            <div style="color: #888; font-size: 0.8rem;">Verdict</div>
+            <div>${c.verdictChange.from.replace('_',' ')} → ${c.verdictChange.to.replace('_',' ')}</div>
+          </div>
+          <div class="compare-card">
+            <div style="color: #888; font-size: 0.8rem;">Avg Subscribers</div>
+            <div class="change-indicator ${changeClass(c.avgSubsChange.pctChange)}">${pct(c.avgSubsChange.pctChange)}</div>
+          </div>
+          <div class="compare-card">
+            <div style="color: #888; font-size: 0.8rem;">Avg Views</div>
+            <div class="change-indicator ${changeClass(c.avgViewsChange.pctChange)}">${pct(c.avgViewsChange.pctChange)}</div>
+          </div>
+          <div class="compare-card">
+            <div style="color: #888; font-size: 0.8rem;">Confidence</div>
+            <div>${c.confidenceChange.from}% → ${c.confidenceChange.to}%</div>
+          </div>
+        </div>
+        ${c.newChannels.length > 0 ? `<div style="margin-top: 12px; font-size: 0.85rem;"><strong>New channels:</strong> ${c.newChannels.map(esc).join(', ')}</div>` : ''}
+        ${c.droppedChannels.length > 0 ? `<div style="margin-top: 8px; font-size: 0.85rem;"><strong>Dropped:</strong> ${c.droppedChannels.map(esc).join(', ')}</div>` : ''}
+        <div style="margin-top: 16px; padding: 12px; background: #111; border-radius: 6px; font-size: 0.85rem;">${esc(c.summary)}</div>
+      `;
+    }
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    // === Monitors ===
+    async function loadMonitors() {
+      try {
+        const res = await api('/monitors');
+        const monitors = await res.json();
+        const list = document.getElementById('monitorList');
+        if (monitors.length === 0) {
+          list.innerHTML = '<div style="color: #666; font-size: 0.85rem; padding: 8px;">No monitors set up.</div>';
+          return;
+        }
+        list.innerHTML = monitors.map(m => {
+          const lastRun = m.lastRunAt ? new Date(m.lastRunAt).toLocaleDateString() : 'never';
+          const stale = !m.lastRunAt || (Date.now() - new Date(m.lastRunAt).getTime()) > m.intervalDays * 86400000;
+          return `
+            <div class="monitor-item">
+              <span class="niche">${esc(m.niche)}</span>
+              <span class="meta">every ${m.intervalDays}d</span>
+              <span class="meta">last: ${lastRun}</span>
+              ${stale ? '<span class="badge failed">stale</span>' : '<span class="badge complete">ok</span>'}
+              <button class="btn btn-sm btn-outline" onclick="deleteMonitor('${esc(m.niche)}')" style="padding: 3px 8px;">&times;</button>
+            </div>
+          `;
+        }).join('');
+      } catch {}
+    }
+
+    async function addMonitor() {
+      const niche = document.getElementById('monitorNiche').value.trim();
+      const kw = document.getElementById('monitorKeywords').value.trim();
+      const interval = parseInt(document.getElementById('monitorInterval').value) || 7;
+      if (!niche) return alert('Enter a niche to monitor');
+      const keywords = kw ? kw.split(',').map(k => k.trim()).filter(Boolean) : [niche];
+      try {
+        await api('/monitors', {
+          method: 'POST',
+          body: JSON.stringify({ niche, keywords, intervalDays: interval })
+        });
+        document.getElementById('monitorNiche').value = '';
+        document.getElementById('monitorKeywords').value = '';
+        loadMonitors();
+      } catch (err) {
+        alert('Failed to add monitor');
+      }
+    }
+
+    async function deleteMonitor(niche) {
+      try {
+        await api('/monitors/' + encodeURIComponent(niche), { method: 'DELETE' });
+        loadMonitors();
+      } catch { alert('Failed to delete monitor'); }
+    }
+
+    async function runStaleMonitors() {
+      try {
+        const res = await api('/monitors/run-stale', { method: 'POST' });
+        const data = await res.json();
+        if (data.triggered === 0) {
+          alert('No stale monitors to run');
+        } else {
+          alert('Triggered ' + data.triggered + ' re-run(s): ' + data.niches.join(', '));
+          setTimeout(() => { loadSessions(); loadMonitors(); }, 2000);
+        }
+      } catch { alert('Failed to run stale monitors'); }
+    }
+
+    // Search and sort listeners
+    document.getElementById('searchInput').addEventListener('input', e => {
+      searchQuery = e.target.value.trim();
+      renderSessions();
+    });
+    document.getElementById('sortSelect').addEventListener('change', e => {
+      sortOrder = e.target.value;
+      renderSessions();
+    });
+
+    // Keyboard shortcuts
+    document.getElementById('nicheInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('keywordsInput').focus();
+    });
+    document.getElementById('keywordsInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') startSession();
+    });
+    document.getElementById('tagInput').addEventListener('keydown', async e => {
+      if (e.key === 'Enter') {
+        const val = e.target.value.trim().toLowerCase();
+        if (val && !currentSessionTags.includes(val)) {
+          currentSessionTags.push(val);
+          await saveTags();
+        }
+        e.target.value = '';
+      }
+    });
+
+    // Auto-refresh running sessions
+    setInterval(() => {
+      const cards = document.querySelectorAll('.badge.running, .badge.pending');
+      if (cards.length > 0) loadSessions();
+    }, 5000);
+
+    checkHealth();
+    loadSessions();
+    loadMonitors();
+  </script>
+</body>
+</html>

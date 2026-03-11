@@ -13,7 +13,8 @@ async function main() {
     console.log("\n=== Past Research Sessions ===");
     for (const s of pastSessions) {
       const verdict = s.recommendation?.verdict ?? "pending";
-      console.log(`  [${s.status}] ${s.niche} — ${verdict} (${s.createdAt})`);
+      const error = s.error ? ` | error: ${s.error}` : "";
+      console.log(`  [${s.status}] ${s.niche} — ${verdict} (${s.createdAt})${error}`);
     }
     console.log("");
   } else {

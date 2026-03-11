@@ -22,6 +22,9 @@ export class SessionStore {
       channels: [],
       analysis: null,
       recommendation: null,
+      chromeData: null,
+      tags: [],
+      error: null,
     };
     this.save(session);
     return session;

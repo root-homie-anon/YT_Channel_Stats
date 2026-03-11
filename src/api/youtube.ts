@@ -1,21 +1,29 @@
 import { google, youtube_v3 } from "googleapis";
 import { ChannelData, VideoData } from "../types";
+import { withRetry } from "./retry";
+import { RateLimiter } from "./rate-limiter";
 
 export class YouTubeAPI {
   private yt: youtube_v3.Youtube;
+  private limiter: RateLimiter;
 
   constructor(apiKey: string) {
     this.yt = google.youtube({ version: "v3", auth: apiKey });
+    this.limiter = new RateLimiter(5, 200);
   }
 
   async searchChannels(query: string, maxResults = 20): Promise<ChannelData[]> {
-    const searchRes = await this.yt.search.list({
-      part: ["snippet"],
-      q: query,
-      type: ["channel"],
-      maxResults,
-      order: "relevance",
-    });
+    const searchRes = await this.apiCall(
+      () =>
+        this.yt.search.list({
+          part: ["snippet"],
+          q: query,
+          type: ["channel"],
+          maxResults,
+          order: "relevance",
+        }),
+      `searchChannels("${query}")`
+    );
 
     const channelIds = (searchRes.data.items ?? [])
       .map((item) => item.snippet?.channelId)
@@ -23,10 +31,14 @@ export class YouTubeAPI {
 
     if (channelIds.length === 0) return [];
 
-    const channelRes = await this.yt.channels.list({
-      part: ["snippet", "statistics"],
-      id: channelIds,
-    });
+    const channelRes = await this.apiCall(
+      () =>
+        this.yt.channels.list({
+          part: ["snippet", "statistics"],
+          id: channelIds,
+        }),
+      `channels.list(${channelIds.length} ids)`
+    );
 
     return (channelRes.data.items ?? []).map((ch) => ({
       channelId: ch.id ?? "",
@@ -42,13 +54,17 @@ export class YouTubeAPI {
   }
 
   async getChannelVideos(channelId: string, maxResults = 10): Promise<VideoData[]> {
-    const searchRes = await this.yt.search.list({
-      part: ["snippet"],
-      channelId,
-      type: ["video"],
-      maxResults,
-      order: "date",
-    });
+    const searchRes = await this.apiCall(
+      () =>
+        this.yt.search.list({
+          part: ["snippet"],
+          channelId,
+          type: ["video"],
+          maxResults,
+          order: "date",
+        }),
+      `getChannelVideos("${channelId}")`
+    );
 
     const videoIds = (searchRes.data.items ?? [])
       .map((item) => item.id?.videoId)
@@ -56,10 +72,14 @@ export class YouTubeAPI {
 
     if (videoIds.length === 0) return [];
 
-    const videoRes = await this.yt.videos.list({
-      part: ["snippet", "statistics", "contentDetails"],
-      id: videoIds,
-    });
+    const videoRes = await this.apiCall(
+      () =>
+        this.yt.videos.list({
+          part: ["snippet", "statistics", "contentDetails"],
+          id: videoIds,
+        }),
+      `videos.list(${videoIds.length} ids)`
+    );
 
     return (videoRes.data.items ?? []).map((v) => ({
       videoId: v.id ?? "",
@@ -74,10 +94,14 @@ export class YouTubeAPI {
   }
 
   async getChannelWithVideos(channelId: string): Promise<ChannelData | null> {
-    const channelRes = await this.yt.channels.list({
-      part: ["snippet", "statistics"],
-      id: [channelId],
-    });
+    const channelRes = await this.apiCall(
+      () =>
+        this.yt.channels.list({
+          part: ["snippet", "statistics"],
+          id: [channelId],
+        }),
+      `getChannelWithVideos("${channelId}")`
+    );
 
     const ch = channelRes.data.items?.[0];
     if (!ch) return null;
@@ -95,5 +119,9 @@ export class YouTubeAPI {
       thumbnailUrl: ch.snippet?.thumbnails?.medium?.url ?? "",
       recentVideos,
     };
+  }
+
+  private apiCall<T>(fn: () => Promise<T>, label: string): Promise<T> {
+    return this.limiter.wrap(() => withRetry(fn, label));
   }
 }

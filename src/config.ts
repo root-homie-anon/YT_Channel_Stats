@@ -8,6 +8,11 @@ export interface AppConfig {
   youtubeApiKey: string;
   port: number;
   sessionDir: string;
+  dashboardUser: string;
+  dashboardPass: string;
+  telegramBotToken: string;
+  telegramChatId: string;
+  telegramGroupId: string;
 }
 
 export function loadConfig(): AppConfig {
@@ -22,5 +27,20 @@ export function loadConfig(): AppConfig {
   // Ensure session directory exists
   fs.mkdirSync(sessionDir, { recursive: true });
 
-  return { youtubeApiKey, port, sessionDir };
+  const dashboardUser = process.env.DASHBOARD_USER ?? "admin";
+  const dashboardPass = process.env.DASHBOARD_PASS ?? "";
+
+  if (!dashboardPass || dashboardPass === "changeme") {
+    console.warn("[config] DASHBOARD_PASS is default — change it before exposing the server.");
+  }
+
+  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
+  const telegramChatId = process.env.TELEGRAM_CHAT_ID ?? "";
+  const telegramGroupId = process.env.TELEGRAM_GROUP_ID ?? "";
+
+  if (!telegramBotToken) {
+    console.warn("[config] TELEGRAM_BOT_TOKEN is not set — Telegram notifications disabled.");
+  }
+
+  return { youtubeApiKey, port, sessionDir, dashboardUser, dashboardPass, telegramBotToken, telegramChatId, telegramGroupId };
 }

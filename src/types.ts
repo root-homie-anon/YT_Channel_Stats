@@ -8,6 +8,15 @@ export interface ResearchSession {
   channels: ChannelData[];
   analysis: NicheAnalysis | null;
   recommendation: Recommendation | null;
+  chromeData: ChromeDataCollection | null;
+  tags: string[];
+  error: string | null;
+}
+
+export interface ChromeDataCollection {
+  socialBlade: Record<string, unknown>[];
+  channelPages: Record<string, unknown>[];
+  extractedAt: string;
 }
 
 export interface ChannelData {
@@ -39,9 +48,13 @@ export interface NicheAnalysis {
   avgSubscribers: number;
   avgViews: number;
   avgUploadFrequency: number;
+  uploadsPerWeek: number;
   topFormats: string[];
   trendDirection: "growing" | "stable" | "declining";
   relatedNiches: string[];
+  engagementRate: number;
+  avgLikesPerVideo: number;
+  avgCommentsPerVideo: number;
 }
 
 export interface Recommendation {

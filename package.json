@@ -12,12 +12,15 @@
     "cors": "^2.8.6",
     "dotenv": "^16.0.0",
     "express": "^5.2.1",
-    "googleapis": "^171.4.0"
+    "googleapis": "^171.4.0",
+    "pdfkit": "^0.17.2",
+    "puppeteer": "^24.39.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
+    "@types/pdfkit": "^0.17.5",
     "ts-node": "^10.0.0",
     "typescript": "^5.0.0"
   }

@@ -1,6 +1,9 @@
 import { ResearchSession } from "../types";
+import { TopicDiscovery } from "../analysis/topic-discovery";
 
 export class ReportGenerator {
+  private topics = new TopicDiscovery();
+
   generateMarkdown(session: ResearchSession): string {
     const { niche, analysis, recommendation, channels } = session;
     const lines: string[] = [];
@@ -23,8 +26,12 @@ export class ReportGenerator {
       lines.push(`- **Trend:** ${analysis.trendDirection}`);
       lines.push(`- **Avg subscribers:** ${formatNumber(analysis.avgSubscribers)}`);
       lines.push(`- **Avg views:** ${formatNumber(analysis.avgViews)}`);
-      lines.push(`- **Avg upload frequency:** ${Math.round(analysis.avgUploadFrequency)} videos`);
+      lines.push(`- **Avg total videos:** ${Math.round(analysis.avgUploadFrequency)}`);
+      lines.push(`- **Upload cadence:** ${analysis.uploadsPerWeek} videos/week`);
       lines.push(`- **Top formats:** ${analysis.topFormats.join(", ")}`);
+      lines.push(`- **Engagement rate:** ${analysis.engagementRate}%`);
+      lines.push(`- **Avg likes/video:** ${formatNumber(analysis.avgLikesPerVideo)}`);
+      lines.push(`- **Avg comments/video:** ${formatNumber(analysis.avgCommentsPerVideo)}`);
       if (analysis.relatedNiches.length > 0) {
         lines.push(`- **Related niches:** ${analysis.relatedNiches.join(", ")}`);
       }
@@ -62,6 +69,56 @@ export class ReportGenerator {
           `| ${ch.title} | ${formatNumber(ch.subscriberCount)} | ${formatNumber(ch.viewCount)} | ${ch.videoCount} |`
         );
       }
+      lines.push("");
+    }
+
+    // Chrome extraction data
+    if (session.chromeData) {
+      const cd = session.chromeData;
+      if (cd.socialBlade.length > 0) {
+        lines.push("## Social Blade Data");
+        for (const sb of cd.socialBlade) {
+          lines.push(`### ${sb.channelId}`);
+          for (const [key, val] of Object.entries(sb)) {
+            if (key === "channelId" || key === "status") continue;
+            if (val !== null && val !== undefined) {
+              lines.push(`- **${key}:** ${val}`);
+            }
+          }
+        }
+        lines.push("");
+      }
+
+      if (cd.channelPages.length > 0) {
+        lines.push("## Channel Page Insights");
+        for (const cp of cd.channelPages) {
+          const features: string[] = [];
+          if (cp.hasMemberships) features.push("Memberships");
+          if (cp.hasMerchShelf) features.push("Merch Shelf");
+          if (features.length > 0 || cp.linkCount) {
+            lines.push(`- **${cp.channelId}:** ${features.join(", ") || "No monetization features detected"} | ${cp.linkCount ?? 0} external links`);
+          }
+        }
+        lines.push("");
+      }
+    }
+
+    // Topic suggestions
+    const topicSuggestions = this.topics.discover(session, 10);
+    if (topicSuggestions.length > 0) {
+      lines.push("## Topic Opportunities");
+      lines.push("| Topic | Score | Source | Evidence |");
+      lines.push("|-------|-------|--------|----------|");
+      for (const t of topicSuggestions) {
+        lines.push(`| ${t.topic} | ${t.score} | ${t.source} | ${t.evidence} |`);
+      }
+      lines.push("");
+    }
+
+    // Error info
+    if (session.error) {
+      lines.push("## Errors");
+      lines.push(`> ${session.error}`);
       lines.push("");
     }
 
