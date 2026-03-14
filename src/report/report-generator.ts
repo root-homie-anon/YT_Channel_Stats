@@ -107,12 +107,18 @@ export class ReportGenerator {
     const topicSuggestions = this.topics.discover(session, 10);
     if (topicSuggestions.length > 0) {
       lines.push("## Topic Opportunities");
-      lines.push("| Topic | Score | Source | Evidence |");
-      lines.push("|-------|-------|--------|----------|");
       for (const t of topicSuggestions) {
-        lines.push(`| ${t.topic} | ${t.score} | ${t.source} | ${t.evidence} |`);
+        lines.push(`### ${t.topic} (score: ${t.score}, ${t.source})`);
+        lines.push(t.evidence);
+        if (t.topVideos && t.topVideos.length > 0) {
+          lines.push("");
+          lines.push("**Top videos:**");
+          for (const v of t.topVideos) {
+            lines.push(`- [${v.title}](https://youtube.com/watch?v=${v.videoId}) — ${formatNumber(v.viewCount)} views`);
+          }
+        }
+        lines.push("");
       }
-      lines.push("");
     }
 
     // Error info

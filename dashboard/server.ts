@@ -93,6 +93,11 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+// Quota usage (public — like health)
+app.get("/api/quota", (_req, res) => {
+  res.json(pipeline.getQuotaUsage());
+});
+
 // Basic auth middleware
 function basicAuth(req: Request, res: Response, next: NextFunction): void {
   // Health endpoint is public

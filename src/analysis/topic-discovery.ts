@@ -1,10 +1,17 @@
 import { ResearchSession, ChannelData, VideoData } from "../types";
 
+export interface TopicVideo {
+  title: string;
+  videoId: string;
+  viewCount: number;
+}
+
 export interface TopicSuggestion {
   topic: string;
   score: number;
   source: "tag_frequency" | "title_pattern" | "engagement_spike";
   evidence: string;
+  topVideos: TopicVideo[];
 }
 
 /**
@@ -18,11 +25,31 @@ export class TopicDiscovery {
   discover(session: ResearchSession, limit = 20): TopicSuggestion[] {
     if (session.channels.length === 0) return [];
 
+    // Build relevance keywords from niche name + session keywords
+    const nicheTerms = [
+      ...session.niche.toLowerCase().split(/\s+/),
+      ...session.keywords.map((k) => k.toLowerCase()),
+    ].filter((w) => w.length > 2);
+
+    // Filter each channel's videos to only niche-relevant ones
+    const filteredChannels: ChannelData[] = session.channels.map((ch) => ({
+      ...ch,
+      recentVideos: ch.recentVideos.filter((v) => {
+        const titleLower = v.title.toLowerCase();
+        const tagsLower = v.tags.map((t) => t.toLowerCase());
+        return nicheTerms.some(
+          (term) =>
+            titleLower.includes(term) ||
+            tagsLower.some((tag) => tag.includes(term))
+        );
+      }),
+    })).filter((ch) => ch.recentVideos.length > 0);
+
     const suggestions: TopicSuggestion[] = [];
 
-    suggestions.push(...this.findHighFrequencyTags(session.channels));
-    suggestions.push(...this.findTitlePatterns(session.channels));
-    suggestions.push(...this.findEngagementSpikes(session.channels));
+    suggestions.push(...this.findHighFrequencyTags(filteredChannels));
+    suggestions.push(...this.findTitlePatterns(filteredChannels));
+    suggestions.push(...this.findEngagementSpikes(filteredChannels));
 
     // Deduplicate by topic name (case-insensitive), keep highest score
     const seen = new Map<string, TopicSuggestion>();
@@ -42,6 +69,7 @@ export class TopicDiscovery {
   private findHighFrequencyTags(channels: ChannelData[]): TopicSuggestion[] {
     const tagCounts = new Map<string, number>();
     const tagWeightedViews = new Map<string, number[]>();
+    const tagVideos = new Map<string, TopicVideo[]>();
 
     for (const ch of channels) {
       for (const v of ch.recentVideos) {
@@ -53,6 +81,9 @@ export class TopicDiscovery {
           const views = tagWeightedViews.get(t) ?? [];
           views.push(v.viewCount * recency);
           tagWeightedViews.set(t, views);
+          const vids = tagVideos.get(t) ?? [];
+          vids.push({ title: v.title, videoId: v.videoId, viewCount: v.viewCount });
+          tagVideos.set(t, vids);
         }
       }
     }
@@ -67,11 +98,16 @@ export class TopicDiscovery {
       const viewScore = Math.min(Math.log10(avgViews + 1) / 7, 1) * 60; // log10(10M)=7 is max
       const score = Math.round(freqScore + viewScore);
 
+      const topVideos = (tagVideos.get(tag) ?? [])
+        .sort((a, b) => b.viewCount - a.viewCount)
+        .slice(0, 10);
+
       results.push({
         topic: tag,
         score: Math.round(score),
         source: "tag_frequency",
         evidence: `Appears in ${count} videos, avg ${formatNumber(avgViews)} views (recency-weighted)`,
+        topVideos,
       });
     }
 
@@ -85,6 +121,7 @@ export class TopicDiscovery {
     // Extract 2-3 word phrases from titles
     const phraseCounts = new Map<string, number>();
     const phraseViews = new Map<string, number[]>();
+    const phraseVideos = new Map<string, TopicVideo[]>();
 
     for (const v of allVideos) {
       const recency = recencyMultiplier(v.publishedAt);
@@ -95,6 +132,7 @@ export class TopicDiscovery {
         .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 
       // Bigrams and trigrams
+      const addedPhrases = new Set<string>();
       for (let len = 2; len <= 3; len++) {
         for (let i = 0; i <= words.length - len; i++) {
           const phrase = words.slice(i, i + len).join(" ");
@@ -102,6 +140,13 @@ export class TopicDiscovery {
           const views = phraseViews.get(phrase) ?? [];
           views.push(v.viewCount * recency);
           phraseViews.set(phrase, views);
+          // Only add the video once per phrase (a title can match multiple n-grams)
+          if (!addedPhrases.has(phrase)) {
+            addedPhrases.add(phrase);
+            const vids = phraseVideos.get(phrase) ?? [];
+            vids.push({ title: v.title, videoId: v.videoId, viewCount: v.viewCount });
+            phraseVideos.set(phrase, vids);
+          }
         }
       }
     }
@@ -115,11 +160,16 @@ export class TopicDiscovery {
       const viewScore = Math.min(Math.log10(avgViews + 1) / 7, 1) * 55;
       const score = Math.round(freqScore + viewScore);
 
+      const topVideos = (phraseVideos.get(phrase) ?? [])
+        .sort((a, b) => b.viewCount - a.viewCount)
+        .slice(0, 10);
+
       results.push({
         topic: phrase,
         score: Math.round(score),
         source: "title_pattern",
         evidence: `Found in ${count} video titles, avg ${formatNumber(avgViews)} views (recency-weighted)`,
+        topVideos,
       });
     }
 
@@ -162,6 +212,7 @@ export class TopicDiscovery {
             score: Math.min(Math.round(20 + ratio * 10), 95),
             source: "engagement_spike",
             evidence: `"${v.title}" got ${ratio.toFixed(1)}x the channel average (${formatNumber(v.viewCount)} views) on ${v.channelTitle}, published ${v.publishedAt.slice(0, 10)}`,
+            topVideos: [{ title: v.title, videoId: v.videoId, viewCount: v.viewCount }],
           });
         }
       }

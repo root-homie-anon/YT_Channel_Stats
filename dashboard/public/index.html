@@ -127,6 +127,12 @@
     <div class="status-bar">
       <span><span class="dot" id="healthDot"></span> Server: <span id="healthStatus">checking...</span></span>
       <span>API Key: <span id="apiKeyStatus">...</span></span>
+      <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+        Quota: <span id="quotaText">...</span>
+        <span style="background: #333; border-radius: 4px; width: 120px; height: 8px; display: inline-block; overflow: hidden;">
+          <span id="quotaBar" style="display: block; height: 100%; width: 0%; background: #4caf50; border-radius: 4px; transition: width 0.3s;"></span>
+        </span>
+      </span>
     </div>
 
     <div class="new-session">
@@ -280,6 +286,27 @@
       }
     }
 
+    async function loadQuota() {
+      try {
+        const res = await fetch('/api/quota');
+        const q = await res.json();
+        const pct = Math.round((q.used / q.limit) * 100);
+        document.getElementById('quotaText').textContent = `${q.used.toLocaleString()} / ${q.limit.toLocaleString()} (${pct}%)`;
+        document.getElementById('quotaBar').style.width = pct + '%';
+        // Color: green < 60%, yellow 60-85%, red > 85%
+        const bar = document.getElementById('quotaBar');
+        if (pct > 85) bar.style.background = '#f44336';
+        else if (pct > 60) bar.style.background = '#ff9800';
+        else bar.style.background = '#4caf50';
+        // Show reset time on hover
+        const resetTime = new Date(q.resetAt).toLocaleTimeString();
+        document.getElementById('quotaText').title = `Resets at ${resetTime}\n` +
+          Object.entries(q.breakdown).map(([k, v]) => `${k}: ${v.calls} calls (${v.units} units)`).join('\n');
+      } catch {
+        document.getElementById('quotaText').textContent = 'unavailable';
+      }
+    }
+
     async function loadSessions() {
       try {
         const res = await api('/sessions');
@@ -381,7 +408,7 @@
         });
         document.getElementById('nicheInput').value = '';
         document.getElementById('keywordsInput').value = '';
-        setTimeout(loadSessions, 1000);
+        setTimeout(() => { loadSessions(); loadQuota(); }, 1000);
       } catch (err) {
         alert('Failed: ' + err.message);
       } finally {
@@ -457,7 +484,24 @@
                 <td><strong>${esc(t.topic)}</strong></td>
                 <td><span class="score-bar" style="width: ${t.score}px"></span> ${t.score}</td>
                 <td><span class="source-tag">${t.source}</span></td>
-                <td style="font-size: 0.8rem; color: #999;">${esc(t.evidence)}</td>
+                <td style="font-size: 0.8rem; color: #999;">
+                  ${esc(t.evidence)}
+                  ${t.topVideos && t.topVideos.length > 0 ? `
+                    <details style="margin-top: 4px;">
+                      <summary style="cursor: pointer; color: #4fc3f7; font-size: 0.75rem;">Show top ${t.topVideos.length} video${t.topVideos.length > 1 ? 's' : ''}</summary>
+                      <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style: none;">
+                        ${t.topVideos.map(v => `
+                          <li style="margin: 2px 0;">
+                            <a href="https://youtube.com/watch?v=${esc(v.videoId)}" target="_blank" rel="noopener" style="color: #81d4fa; text-decoration: none;">
+                              ${esc(v.title)}
+                            </a>
+                            <span style="color: #666; margin-left: 6px;">${formatViews(v.viewCount)} views</span>
+                          </li>
+                        `).join('')}
+                      </ul>
+                    </details>
+                  ` : ''}
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -658,6 +702,12 @@
       return d.innerHTML;
     }
 
+    function formatViews(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+      return String(Math.round(n));
+    }
+
     // === Monitors ===
     async function loadMonitors() {
       try {
@@ -758,6 +808,7 @@
     }, 5000);
 
     checkHealth();
+    loadQuota();
     loadSessions();
     loadMonitors();
   </script>

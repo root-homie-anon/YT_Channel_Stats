@@ -1,4 +1,4 @@
-import { YouTubeAPI } from "./api/youtube";
+import { YouTubeAPI, QuotaUsage } from "./api/youtube";
 import { NicheAnalyzer } from "./analysis/niche-analyzer";
 import { ChromeExtractor } from "./chrome/extractor";
 import { ReportGenerator } from "./report/report-generator";
@@ -29,6 +29,10 @@ export class ResearchPipeline {
     this.telegram = cfg.telegramBotToken
       ? new TelegramNotifier(cfg.telegramBotToken, cfg.telegramChatId, cfg.telegramGroupId)
       : null;
+  }
+
+  getQuotaUsage(): QuotaUsage {
+    return this.youtube.getQuotaUsage();
   }
 
   async run(niche: string, keywords: string[]): Promise<ResearchSession> {
