@@ -127,11 +127,13 @@
     <div class="status-bar">
       <span><span class="dot" id="healthDot"></span> Server: <span id="healthStatus">checking...</span></span>
       <span>API Key: <span id="apiKeyStatus">...</span></span>
-      <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+      <span style="margin-left: auto; display: flex; align-items: center; gap: 8px; position: relative;">
         Quota: <span id="quotaText">...</span>
         <span style="background: #333; border-radius: 4px; width: 120px; height: 8px; display: inline-block; overflow: hidden;">
           <span id="quotaBar" style="display: block; height: 100%; width: 0%; background: #4caf50; border-radius: 4px; transition: width 0.3s;"></span>
         </span>
+        <span id="quotaRemaining" style="color: #aaa; font-size: 0.8rem;"></span>
+        <span id="quotaBreakdown" style="color: #888; font-size: 0.75rem; margin-left: 4px;"></span>
       </span>
     </div>
 
@@ -298,10 +300,14 @@
         if (pct > 85) bar.style.background = '#f44336';
         else if (pct > 60) bar.style.background = '#ff9800';
         else bar.style.background = '#4caf50';
-        // Show reset time on hover
+        // Show remaining units
+        document.getElementById('quotaRemaining').textContent = `(${q.remaining.toLocaleString()} remaining)`;
+        // Show breakdown inline
+        const breakdownParts = Object.entries(q.breakdown).map(([k, v]) => `${k}: ${v.units}`);
+        document.getElementById('quotaBreakdown').textContent = breakdownParts.length > 0 ? `[${breakdownParts.join(' | ')}]` : '';
+        // Reset time on hover
         const resetTime = new Date(q.resetAt).toLocaleTimeString();
-        document.getElementById('quotaText').title = `Resets at ${resetTime}\n` +
-          Object.entries(q.breakdown).map(([k, v]) => `${k}: ${v.calls} calls (${v.units} units)`).join('\n');
+        document.getElementById('quotaText').title = `Resets at ${resetTime}`;
       } catch {
         document.getElementById('quotaText').textContent = 'unavailable';
       }
