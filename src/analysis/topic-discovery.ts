@@ -31,19 +31,37 @@ export class TopicDiscovery {
       ...session.keywords.map((k) => k.toLowerCase()),
     ].filter((w) => w.length > 2);
 
-    // Filter each channel's videos to only niche-relevant ones
-    const filteredChannels: ChannelData[] = session.channels.map((ch) => ({
-      ...ch,
-      recentVideos: ch.recentVideos.filter((v) => {
-        const titleLower = v.title.toLowerCase();
-        const tagsLower = v.tags.map((t) => t.toLowerCase());
-        return nicheTerms.some(
-          (term) =>
-            titleLower.includes(term) ||
-            tagsLower.some((tag) => tag.includes(term))
-        );
-      }),
-    })).filter((ch) => ch.recentVideos.length > 0);
+    // Check if a single video is niche-relevant
+    const isVideoRelevant = (v: VideoData): boolean => {
+      const titleLower = v.title.toLowerCase();
+      const tagsLower = v.tags.map((t) => t.toLowerCase());
+      return nicheTerms.some(
+        (term) =>
+          fuzzyMatch(titleLower, term) ||
+          tagsLower.some((tag) => fuzzyMatch(tag, term))
+      );
+    };
+
+    // Filter each channel's videos to only niche-relevant ones.
+    // If channel name matches AND majority of its videos are relevant,
+    // keep all videos. Otherwise filter per-video.
+    // Also filter out non-English videos.
+    const filteredChannels: ChannelData[] = session.channels.map((ch) => {
+      const chText = ch.title.toLowerCase() + " " + (ch.description ?? "").toLowerCase();
+      const chNameMatches = nicheTerms.some((term) => fuzzyMatch(chText, term));
+      const englishVideos = ch.recentVideos.filter((v) => isLikelyEnglish(v.title));
+      const relevantCount = englishVideos.filter(isVideoRelevant).length;
+      const majorityRelevant = relevantCount > englishVideos.length * 0.5;
+
+      return {
+        ...ch,
+        recentVideos: englishVideos.filter((v) => {
+          // Channel name matches AND most videos are on-topic — keep all
+          if (chNameMatches && majorityRelevant) return true;
+          return isVideoRelevant(v);
+        }),
+      };
+    }).filter((ch) => ch.recentVideos.length > 0);
 
     const suggestions: TopicSuggestion[] = [];
 
@@ -61,7 +79,32 @@ export class TopicDiscovery {
       }
     }
 
-    return Array.from(seen.values())
+    // Post-filter: drop topics that aren't genuinely niche-related
+    // Build a lookup of videoId -> tags for co-occurrence checks
+    const videoTagMap = new Map<string, string[]>();
+    for (const ch of filteredChannels) {
+      for (const v of ch.recentVideos) {
+        videoTagMap.set(v.videoId, v.tags.map((t) => t.toLowerCase()));
+      }
+    }
+
+    const filtered = Array.from(seen.values()).filter((s) => {
+      // Must be English text
+      if (!isLikelyEnglish(s.topic)) return false;
+      // Keep if topic itself contains a niche term
+      const topicLower = s.topic.toLowerCase();
+      if (nicheTerms.some((term) => fuzzyMatch(topicLower, term))) return true;
+      // Keep if at least one top video's title (without hashtags) is niche-relevant
+      if (s.topVideos.some((v) => {
+        const cleanTitle = v.title.toLowerCase().replace(/#\S+/g, "").trim();
+        return nicheTerms.some((term) => fuzzyMatch(cleanTitle, term));
+      })) return true;
+      // Keep engagement spikes (already filtered to relevant videos)
+      if (s.source === "engagement_spike") return true;
+      return false;
+    });
+
+    return filtered
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
   }
@@ -127,9 +170,10 @@ export class TopicDiscovery {
       const recency = recencyMultiplier(v.publishedAt);
       const words = v.title
         .toLowerCase()
+        .replace(/#\S+/g, "")         // remove hashtags entirely
         .replace(/[^\w\s]/g, "")
         .split(/\s+/)
-        .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+        .filter((w) => w.length > 2 && w.length < 30 && !STOP_WORDS.has(w));
 
       // Bigrams and trigrams
       const addedPhrases = new Set<string>();
@@ -233,6 +277,92 @@ function recencyMultiplier(publishedAt: string): number {
   if (ageDays <= 30) return 1.0;
   if (ageDays <= 90) return 0.7;
   return 0.4;
+}
+
+/**
+ * Fuzzy substring match — returns true if text contains a string
+ * similar to term (allows 1 character difference for terms >= 5 chars).
+ * Handles common alternate spellings (e.g. annunaki/anunnaki).
+ */
+function fuzzyMatch(text: string, term: string): boolean {
+  // Exact substring match first
+  if (text.includes(term)) return true;
+  // For short terms, exact only
+  if (term.length < 5) return false;
+  // Sliding window: allow edit distance of 1
+  for (let i = 0; i <= text.length - term.length; i++) {
+    const window = text.substring(i, i + term.length);
+    if (editDistance1(window, term)) return true;
+  }
+  // Also try with ±1 length windows for insertions/deletions
+  for (let i = 0; i <= text.length - term.length - 1; i++) {
+    const window = text.substring(i, i + term.length + 1);
+    if (editDistance1(window, term)) return true;
+  }
+  if (term.length > 1) {
+    for (let i = 0; i <= text.length - term.length + 1; i++) {
+      const window = text.substring(i, i + term.length - 1);
+      if (editDistance1(window, term)) return true;
+    }
+  }
+  return false;
+}
+
+function editDistance1(a: string, b: string): boolean {
+  if (a === b) return true;
+  const lenDiff = Math.abs(a.length - b.length);
+  if (lenDiff > 1) return false;
+  if (lenDiff === 0) {
+    // substitution: exactly 1 char different
+    let diffs = 0;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) diffs++;
+      if (diffs > 1) return false;
+    }
+    return diffs === 1;
+  }
+  // insertion/deletion
+  const [shorter, longer] = a.length < b.length ? [a, b] : [b, a];
+  let si = 0, li = 0, diffs = 0;
+  while (si < shorter.length && li < longer.length) {
+    if (shorter[si] !== longer[li]) {
+      diffs++;
+      if (diffs > 1) return false;
+      li++;
+    } else {
+      si++;
+      li++;
+    }
+  }
+  return true;
+}
+
+/**
+ * Heuristic: a text is likely English if it uses basic Latin characters
+ * and doesn't contain common non-English patterns.
+ * Two-pass: (1) reject non-Latin scripts, (2) reject accented-heavy text.
+ */
+function isLikelyEnglish(text: string): boolean {
+  // Pass 1: reject non-Latin scripts (Cyrillic, Arabic, CJK, Korean, etc.)
+  const nonLatin = text.replace(/[a-zA-Z\u00C0-\u024F0-9\s\p{P}\p{S}]/gu, "");
+  if (nonLatin.length > text.length * 0.15) return false;
+  // Pass 2: reject text heavy on accented characters (Portuguese, Spanish, French, etc.)
+  const alphaOnly = text.replace(/[^a-zA-Z\u00C0-\u024F]/g, "");
+  if (alphaOnly.length === 0) return true;
+  const accented = alphaOnly.replace(/[a-zA-Z]/g, "").length;
+  if (accented / alphaOnly.length > 0.1) return false;
+  // Pass 3: for short text (topic names), check words against common non-English markers
+  const words = text.toLowerCase().split(/\s+/);
+  const nonEnglishMarkers = new Set([
+    "são", "não", "como", "para", "isso", "mais", "pode", "quem", "seus", "pela",
+    "uma", "dos", "das", "nos", "nas", "por", "com", "que", "les", "des", "est",
+    "une", "ont", "dans", "sur", "avec", "pas", "der", "die", "und", "ein", "ist",
+    "mit", "von", "auf", "del", "los", "las", "por", "era", "fue", "muy",
+    "deuses", "foram", "sobre", "depois", "antes", "também", "então", "ainda",
+  ]);
+  const markerCount = words.filter((w) => nonEnglishMarkers.has(w)).length;
+  if (markerCount >= 2 || (words.length <= 4 && markerCount >= 1)) return false;
+  return true;
 }
 
 function formatNumber(n: number): string {
